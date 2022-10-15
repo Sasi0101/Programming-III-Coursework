@@ -1,0 +1,557 @@
+{-# LANGUAGE DeriveGeneric #-}
+-- comp2209 Functional Programming Challenges
+-- (c) University of Southampton 2021
+-- Skeleton code to be updated with your solutions
+-- The dummy functions here simply return an arbitrary value that is usually wrong 
+
+-- DO NOT MODIFY THE FOLLOWING LINES OF CODE
+module Challenges (Atoms,Interactions,Pos,EdgePos,Side(..),Marking(..),
+                   LamExpr(..),LetExpr(..),CLExpr(..),
+                   calcBBInteractions,
+                   solveBB,
+                   prettyPrint,
+                   parseLet,
+                   clTransform,
+                   innerRedn1,outerRedn1,innerCLRedn1,outerCLRedn1,compareInnerOuter
+                   )
+where
+
+
+-- Import standard library and parsing definitions from Hutton 2016, Chapter 13
+import Data.List
+import Data.Function
+import Data.Char
+import Parsing
+import Control.Monad
+import Data.List
+import GHC.Generics (Generic,Generic1)
+import Control.DeepSeq
+
+instance NFData CLExpr
+instance NFData LetExpr
+instance NFData LamExpr 
+instance NFData Marking
+instance NFData Side
+
+
+-- Challenge 1
+-- Calculate Interactions in the Black Box
+
+type Atoms = [ Pos ]
+type Interactions = [  ( EdgePos , Marking )  ] 
+type Pos = (Int, Int)   -- top left is (1,1) , bottom right is (N,N) where N is size of grid
+type EdgePos = ( Side , Int ) -- int range is 1 to N where N is size of grid
+
+data Side = North | East | South | West
+            deriving (Show, Eq, Ord)
+
+data Marking =  Absorb | Reflect | Path EdgePos
+                deriving (Show, Eq)
+
+data Marking1 = Hit | Reflection | DoubleReflection | Nothing1 deriving (Show,Eq)
+
+
+
+
+--Gives the final squares that will be a hit that can absorb a ray
+finalHits :: (Ord b, Num b) => b -> [(b, b)] -> [(b, b)]
+finalHits _ [] = []
+finalHits grid atoms = removeImpossibleHits grid (getHits atoms)
+        where getHits (at:atoms) | null atoms = auxGetHits at -- Gives all the squares where an atom could hit
+                   | otherwise = auxGetHits at ++ getHits atoms
+              auxGetHits (x,y) = [(x-1,y),(x+1,y),(x,y-1),(x,y+1)]
+              --Removes all the squares that can not be in the grid
+              removeImpossibleHits grid hits = [(x,y) | (x,y) <- hits, x > 0 && y < 0 && x <= grid && y >= -grid]
+
+
+--Makes a single list of a list of lists
+oneList :: [[a]] -> [a]
+oneList [] = []
+oneList (x:xs) | null xs = x
+               | otherwise = x ++ oneList xs
+
+
+--Removes duplicate elements in a list
+rmdups :: (Ord a) => [a] -> [a]
+rmdups = map head . group . sort
+
+
+-- Simulates a ray through the grid
+oneRay :: (Side, Int) -> Int -> [(Int, Int)] -> (Side, (Int, Int)) -> Marking
+oneRay initialIn grid atoms (side, (x,y)) | (x < 1 || y > -1 || x > grid || y < -grid) && (initialIn == (side,whatNumberExited grid side (makeMove side (x,y)))) = Reflect -- if the entry ray is equal to the exit ray it reflects
+                                          | x < 1 || y > -1 || x > grid || y < -grid = Path (side, whatNumberExited grid side (makeMove side (x,y)))
+                                          -- hit one
+                                          | checkWhatsHappening grid atoms (x,y) == Hit = Absorb
+                                          -- double reflection one
+                                          | checkWhatsHappening grid atoms (x,y) == DoubleReflection = Reflect
+                                          -- reflectionOnes
+                                          | (side == North || side == South) && checkWhatsHappening grid atoms (x,y) == Reflection && checkWhatsHappening grid atoms (x -1, y) /= Hit = oneRay initialIn grid atoms (West, move West)
+                                          | (side == North || side == South) && checkWhatsHappening grid atoms (x,y) == Reflection = oneRay initialIn grid atoms (East, move East)
+                                          | (side == West || side == East) && checkWhatsHappening grid atoms (x,y) == Reflection && checkWhatsHappening grid atoms (x, y -1) /= Hit = oneRay initialIn grid atoms (South, move South)
+                                          | (side == West || side == East) && checkWhatsHappening grid atoms (x,y) == Reflection = oneRay initialIn grid atoms (North, move North)
+                                          | otherwise = oneRay initialIn grid atoms (side, move side)
+              where move s = makeMove s (x,y)
+                    -- Gives us the number where the ray exited the grid 
+                    -- grid is the grid we are in, side represent where it exited, and (x,y) the point
+                    whatNumberExited grid side (x,y) | y < 0 = whatNumberExited grid side (x,-y)
+                                                     | side == North || side == South = x
+                                                     | otherwise = y
+
+
+--Makes a move on the board depending on what side we have
+makeMove :: (Num a1, Num a2) => Side -> (a2, a1) -> (a2, a1)
+makeMove side (x,y) | side == North = (x,y+1)
+                    | side == South = (x, y-1)
+                    | side == West = (x-1,y)
+                    | side == East = (x+1,y)
+
+--Check whats happening at a position (reflect, hit, nothing)
+checkWhatsHappening :: (Ord b, Num b) => b -> [(b, b)] -> (b, b) -> Marking1
+checkWhatsHappening grid atoms (x,y) | not (null [(x1,y1) | (x1,y1) <- finalHits grid atoms, (x,y)==(x1,y1)]) = Hit
+                                     | not (null [(x1,y1) | (x1,y1) <- finalDeflections grid atoms, (x,y) == (x1,y1)]) = DoubleReflection
+                                     | not (null [(x1,y1) | (x1,y1) <- finalReflections grid atoms, (x,y) == (x1,y1)]) = Reflection
+                                     | otherwise = Nothing1
+            where finalReflections grid [] = []
+                  finalReflections grid atoms = rmdups $ head (([getAllPossible grid atoms] \\ [finalHits grid atoms]) \\ [finalDeflections grid atoms]) -- The possible reflecting places
+                  finalDeflections _ [] = []
+                  finalDeflections  grid atoms = rmdups [(x,y) | (x,y) <- oneList $ getDeflections atoms, x > 0 && y < 0 && x <=grid && y >= -grid] -- The possible deflecting placing
+                  getAllPossible _ [] = []
+                  getAllPossible grid atoms = [(x1,y1) | (x1,y1) <- oneList $ [[(x+1,y+1), (x+1,y-1), (x-1, y-1), (x-1,y+1), (x,y+1), (x,y-1),(x+1,y),(x-1,y)] | (x,y) <- atoms], x1 > 0 && y1 < 0 && x1 <= grid && y1 >= -grid] -- All the possible places
+                  getDeflections atoms = [getMatchingCorners (x1,y1) (x2,y2) | (x1,y1) <- atoms, (x2,y2) <- tail atoms, (x1,y1) /= (x2,y2)] -- Get the deflecting points but here it can go out of the grid
+                  getMatchingCorners (x1,y1) (x2,y2) = [(a,b) | (a,b) <- getCorners (x1,y1), (a1,b1) <- getCorners (x2,y2), (a,b) == (a1,b1)] -- gives us the matching corner of two atoms
+                  getCorners (x,y) = [(x+1,y+1), (x+1,y-1), (x-1,y+1), (x-1,y-1)]
+
+
+
+--Check if the first move is an edge reflection or not and if not go to oneRay
+firstMove :: (Side, Int) -> Int -> [(Int, Int)] -> (Side, (Int, Int)) -> Marking
+firstMove initialIn grid atoms (side, (x,y)) | not (null [(x1,y1) | (x1,y1) <- finalHits grid (getEdgeCornerForSide grid side atoms), (x,y) == (x1,y1)]) = Reflect
+                                             | otherwise = oneRay initialIn grid atoms (side, (x,y))
+
+
+--Get the atoms where there can be reflection depending on the entry ray
+getEdgeCornerForSide :: (Eq a, Num a) => a -> Side -> [(a, a)] -> [(a, a)]
+getEdgeCornerForSide grid side [] = []
+getEdgeCornerForSide grid side (at:atoms) | null atoms && side == North && (snd at == -grid) = [at]
+                                          | null atoms && side == South && (snd at == -1) = [at]
+                                          | null atoms && side == East && (fst at == 1) = [at]
+                                          | null atoms && side == West && (fst at == grid) = [at]
+                                          | null atoms = []
+                                          | side == North && (snd at == -grid) = at : getEdgeCornerForSide grid side atoms
+                                          | side == South && (snd at == -1) = at : getEdgeCornerForSide grid side atoms
+                                          | side == East && (fst at == 1) = at : getEdgeCornerForSide grid side atoms
+                                          | side == West && (fst at == grid) = at : getEdgeCornerForSide grid side atoms
+                                          | otherwise = getEdgeCornerForSide grid side atoms
+
+
+--Give all the result of the grid when firing a ray
+calcBBInteractions :: Int -> [(Int, Int)] -> [((Side, Int), Marking)]
+calcBBInteractions 1 atoms = [((North,1),Absorb),((East,1),Absorb),((South,1),Absorb),((West,1),Absorb)]
+calcBBInteractions grid atoms = [((x,y), firstMove (x,y) grid (changeAtoms atoms) (changeToCorrectPoint grid x y)) | x <-[North,East,South,West], y <- [1..grid]]
+                  where changeAtoms atoms = [(fst x, -snd x) | x <- atoms]
+                        -- Get the correct 2D representation of a poin
+                        changeToCorrectPoint grid side x  | side == North = (South, (x,-1))
+                                                          | side == South = (North, (x, -grid))
+                                                          | side == West = (East, (1,-x))
+                                                          | side == East = (West, (grid, -x))
+
+
+
+
+
+-- Challenge 2
+-- Solve a Black Box
+
+--Make a board
+--should be a list of lists by the lists being the x coordinate and the elements in each list is the y
+newBoard :: (Enum t, Num t, Num a) => t -> [[a]]
+newBoard n = [[0 | x<-[1..n]] | y <- [1..n]]
+
+
+--Gives us the size of the grid
+getGrid :: Interactions -> Int
+getGrid interactions = maximum [snd $ fst $ x | x <- interactions]
+
+--Changes value depending on the y coordinate
+changeY :: (Eq t1, Num t1, Num t2) => t1 -> [t2] -> t2 -> [t2]
+changeY (-1) list value = (head list + value) : tail list
+changeY y list value = head list : changeY (y+1) (tail list) value
+
+--Changes a cell in a board and gives us the new board with the updated value
+newBoardValue :: (Eq t1, Eq t2, Num t1, Num t2, Num t3) => t1 -> t2 -> [[t3]] -> t3 -> [[t3]]
+newBoardValue 1 y board value = changeY y (head board) value : tail board
+newBoardValue x y board value = head board : newBoardValue (x-1) y (tail board) value
+
+
+--Converts the (North,1) to int coordinates so we can work more easily with it it changes to (1,-1)
+sideToNumber :: Num a => a -> (Side, a) -> (a, a)
+sideToNumber grid (side,n) | side == North = (n,-1)
+                           | side == South = (n, -grid)
+                           | side == East = (grid, -n)
+                           | side == West = (1,-n)
+
+
+--CALCULATE HITS
+
+
+--Calculates one rays hit (initial value is grid)
+pointsForHit :: (Eq t2, Num t2, Num t3) =>t2 -> [[t3]] -> (Side, (t2, t2)) -> t3 -> [[t3]]
+pointsForHit grid board (side, (x,y)) initialValue | (side == East) && (x /= 1) = pointsForHit grid (newBoardValue x y board initialValue) (side, (x-1,y)) (initialValue - 1)
+                                                   | (side == West) && (x /= grid) = pointsForHit grid (newBoardValue x y board initialValue) (side, (x+1,y)) (initialValue - 1)
+                                                   | (side == North) && (y /= -grid) = pointsForHit grid (newBoardValue x y board initialValue) (side, (x,y-1)) (initialValue - 1)
+                                                   | (side == South) && (y /= -1) = pointsForHit grid (newBoardValue x y board initialValue) (side, (x,y+1)) (initialValue - 1) 
+                                                   | x == 1 || x == grid || y == -1 || y == -grid = newBoardValue x y board initialValue
+
+
+--Calculate allHits and send back the new board with the values
+--where hits = getHits interactions
+finalHitValues :: (Eq a, Num a) => a -> [[a]] -> [((Side, a), b)] -> [[a]]
+finalHitValues grid board [] = board
+finalHitValues grid board (h:hits) | null hits = pointsForHit grid board (fst $ fst h, sideToNumber grid (fst h)) number
+                                   | otherwise = finalHitValues grid (pointsForHit grid board (fst $ fst h, sideToNumber grid (fst h)) number) hits
+                            where number = grid + 2
+
+
+
+
+--CALCULATE REFLECTIONS
+
+--Calculate one rays reflection
+--points for the middle of reflection, (side, (x,y)) is side and sideToNumber
+pointsForReflection :: (Eq t2, Num t2, Num t3) =>t2 -> [[t3]] -> (Side, (t2, t2)) -> t3 -> [[t3]]
+pointsForReflection grid board (side, (x,y)) initialValue  | (side == East) && (x /= 1) = pointsForReflection grid (newBoardValue x y board initialValue) (side, (x-1,y)) initialValue
+                                                           | (side == West) && (x /= grid) = pointsForReflection grid (newBoardValue x y board initialValue) (side, (x+1,y)) initialValue
+                                                           | (side == North) && (y /= -grid) = pointsForReflection grid (newBoardValue x y board initialValue) (side, (x,y-1)) initialValue
+                                                           | (side == South) && (y /= -1) = pointsForReflection grid (newBoardValue x y board initialValue) (side, (x,y+1)) initialValue
+                                                           | x == 1 || x == grid || y == -1 || y == -grid = newBoardValue x y board initialValue
+
+
+
+--Get the points for the two sides
+finalPointsForReflection :: (Ord t3, Num t3) =>t3 -> [[t3]] -> (Side, (t3, t3)) -> t3 -> [[t3]]
+finalPointsForReflection grid board (side, (x,y)) initialValue | (side == North || side == South) && isPart grid (x-1,y) && isPart grid (x+1,y) = pointsForReflection grid (pointsForHit grid (pointsForHit grid board (side, (x+1,y)) initialValue) (side, (x-1,y)) initialValue) (side, (x,y)) (-grid)
+                                                               | (side == North || side == South) && isPart grid (x-1,y) && not (isPart grid (x+1,y)) = pointsForReflection grid (pointsForHit grid board (side, (x-1,y)) initialValue) (side, (x,y)) (-grid)
+                                                               | (side == North || side == South) && not (isPart grid (x-1,y)) && isPart grid (x+1,y) = pointsForReflection grid (pointsForHit grid board (side, (x+1,y)) initialValue) (side, (x,y)) (-grid)
+                                                               | (side == West || side == East) && isPart grid (x,y-1) && isPart grid (x,y+1) = pointsForReflection grid (pointsForHit grid (pointsForHit grid board (side, (x,y-1)) initialValue) (side, (x,y+1)) initialValue) (side, (x,y)) (-grid)
+                                                               | (side == West || side == East) && isPart grid (x,y-1) && not (isPart grid (x,y+1)) = pointsForReflection grid (pointsForHit grid board (side, (x,y-1)) initialValue) (side, (x,y)) (-grid)
+                                                               | (side == West || side == East) && not (isPart grid (x,y-1)) && isPart grid (x,y+1) = pointsForReflection grid (pointsForHit grid board (side, (x,y+1)) initialValue) (side, (x,y)) (-grid)
+                            where   
+
+--Check if (x,y) is part of the grid
+isPart grid (x,y) = (x > 0) && (x <=grid) && (y < 0) && (y >= -grid)
+
+--Get the board after all reflections
+--reflects is getReflections
+finalReflectionValues :: (Ord a, Num a) => a -> [[a]] -> [((Side, a), b)] -> [[a]]
+finalReflectionValues grid board [] = board
+finalReflectionValues grid board (r:reflects) | null reflects = finalPointsForReflection grid board (fst $ fst r, sideToNumber grid (fst r)) grid
+                                              | otherwise = finalReflectionValues grid (finalPointsForReflection grid board (fst $ fst r, sideToNumber grid (fst r)) grid) reflects
+
+
+--CALCULATE PATH ONES
+
+
+--Get the one that go in a straight line (interactions is the getPaths) (for example if in is North and out is South)
+getIt [] = []
+getIt (int:interactions) | (not (null interactions)) && (( ((fst $ fst int) == North) && ((fst $ snd int) == South)) || ( ((fst $ fst int) == South) && ((fst $ snd int) == North)) || ( ((fst $ fst int) == East) && ((fst $ snd int) == West)) || ( ((fst $ fst int) == West) && ((fst $ snd int) == East))) && ((snd $ snd int) == (snd $ fst int)) = int : getIt interactions
+                         | (null interactions) && (( ((fst $ fst int) == North) && ((fst $ snd int) == South)) || ( ((fst $ fst int) == South) && ((fst $ snd int) == North)) || ( ((fst $ fst int) == East) && ((fst $ snd int) == West)) || ( ((fst $ fst int) == West) && ((fst $ snd int) == East))) && ((snd $ snd int) == (snd $ fst int)) = [int]
+                         | not (null interactions) = getIt interactions
+                         | otherwise = []
+
+
+--Get the ones that go in a straight line and update the board with the new values (interactions = getIt (getPaths interactions))
+finalStraightLineValues grid board [] = board
+finalStraightLineValues grid board (int:interactions) | null interactions = pointsForReflection grid board ((fst $ fst int), (sideToNumber grid (fst int))) (-2)
+                                                      | otherwise = finalStraightLineValues grid (pointsForReflection grid board ((fst $ fst int), (sideToNumber grid (fst int))) (-2)) interactions
+
+
+--just the check the reflections and absorbs and if straight line path work good and gives a pretty decent result
+-- Gives us the final board with all the values the highest being the most likely to be an atom
+finalBoard n interactions = finalMinusForSides (degreePathOnes $ getPaths interactions) (allDegreePathOnes (finalStraightLineValues grid (finalReflectionValues grid (finalHitValues grid (newBoard grid) (getHits1 interactions)) (getReflections interactions)) (getIt (getPaths interactions))) (degreePathOnes $ getPaths interactions) grid) grid
+                                where grid = getGrid interactions
+                                      --Get those rays where y = Absorb
+                                      getHits1 interactions = [x | x <- interactions, snd x == Absorb]
+                                      --Get those rays where y = Reflect
+                                      getReflections interactions = [x | x <- interactions, snd x == Reflect]
+                                      --Gives us the Path ones from interactions without Path
+                                      
+
+getPaths interactions = [(fst x, changePathToValue (snd x)) | x <- interactions, snd x /= Reflect, snd x /= Absorb]
+                                                where changePathToValue (Path (side1,x1)) = (side1,x1)
+
+--First we need to get pos with their values
+finalValues (b:board) x | null board = [columnsFinal b x (-1)]
+                        | otherwise = columnsFinal b x (-1) : finalValues board (x+1)
+        
+columnsFinal (c:col) x y | null col = [(c,(x,y))]
+                         | otherwise = (c,(x,y)) : columnsFinal col x (y-1)
+
+
+--We take while we need; we choos the xth highest value atom and every atom that is higher or equal we take 
+-- final = testForValues, number = fst (testForValues !! x)
+takeWhileNeeded [] _ = []
+takeWhileNeeded (f:final) number | fst f >= number = f : takeWhileNeeded final number
+                                 | otherwise = []
+
+
+--Makes sublists of a list
+sublists [] = [[]]
+sublists (x:xs) = [x:sublist | sublist <- sublists xs] ++ sublists xs
+
+
+--Get some atoms from the list of all cells according to their value
+finalAtomsPositions interactions | getGrid interactions < 5 = finalList
+                                   | getGrid interactions < 7 = takeWhileNeeded finalList (fst (finalList !! (getGrid interactions*2)))
+                                   | otherwise = takeWhileNeeded finalList (fst (finalList !! (getGrid interactions)))
+                        where finalList = sortBy (flip compare `on` fst) (oneList (finalValues (finalBoard 1 interactions) 1)) --gives us the calculated board in order to their value
+
+
+--Gives us the sublists of the most possible atoms where the length has to be the number of atoms we are looking for
+getNAtoms n interactions = [x | x <- sublists [(fst $ snd y, -(snd $ snd y)) | y <- finalAtomsPositions interactions], length x == n]
+
+
+--Get the ones that entry and exit side differ by 90 degree
+--where interaction = getPaths
+degreePathOnes [] = []
+degreePathOnes (int:interaction)  | null interaction && ((fst $ fst int) == South) && ((fst $ snd int) /= South) && ((fst $ snd int) /= North) = [int]
+                                  | null interaction && ((fst $ fst int) == North) && ((fst $ snd int) /= South) && ((fst $ snd int) /= North) = [int]
+                                  | null interaction && ((fst $ fst int) == West) && ((fst $ snd int) /= West) && ((fst $ snd int) /= East) = [int]
+                                  | null interaction && ((fst $ fst int) == East) && ((fst $ snd int) /= West) && ((fst $ snd int) /= East) = [int]
+      
+                                  | ((fst $ fst int) == South) && ((fst $ snd int) /= South) && ((fst $ snd int) /= North) = int : degreePathOnes interaction
+                                  | ((fst $ fst int) == North) && ((fst $ snd int) /= South) && ((fst $ snd int) /= North) = int : degreePathOnes interaction
+                                  | ((fst $ fst int) == West) && ((fst $ snd int) /= West) && ((fst $ snd int) /= East) = int : degreePathOnes interaction
+                                  | ((fst $ fst int) == East) && ((fst $ snd int) /= West) && ((fst $ snd int) /= East) = int : degreePathOnes interaction
+                                  | otherwise = degreePathOnes interaction
+
+
+--Calculate one rays effect on the board
+--ray is one ray like ((North,2),(West,2))
+calculateOnePathPoints ray board grid | ((fst $ fst ray) == North) && ((fst $ snd ray) == East) = newBoardValue (fst a -1) (snd b -1) board 5
+                                              | ((fst $ fst ray) == North) && ((fst $ snd ray) == West) = newBoardValue (fst a +1) (snd b -1) board 5
+                                              | ((fst $ fst ray) == South) && ((fst $ snd ray) == East) = newBoardValue (fst a -1) (snd b +1) board 5
+                                              | ((fst $ fst ray) == South) && ((fst $ snd ray) == West) = newBoardValue (fst a +1) (snd b +1) board 5
+                                              | ((fst $ fst ray) == West) && ((fst $ snd ray) == South) = newBoardValue (fst a +1) (snd b +1) board 5
+                                              | ((fst $ fst ray) == West) && ((fst $ snd ray) == North) = newBoardValue (fst a +1) (snd b -1) board 5
+                                              | ((fst $ fst ray) == East) && ((fst $ snd ray) == South) = newBoardValue (fst a -1) (snd b +1) board 5
+                                              | ((fst $ fst ray) == East) && ((fst $ snd ray) == North) = newBoardValue (fst a -1) (snd b -1) board 5
+
+                  where a = (sideToNumber grid (fst ray))
+                        b = (sideToNumber grid (snd ray))
+
+
+--Gives us the board after we estimate the path ones
+--Interactions is degreePathOnes $ getPaths interactions, grid is getGrid interactions
+allDegreePathOnes board (int:interactions) grid | null interactions = calculateOnePathPoints int board grid
+                                                | otherwise = allDegreePathOnes (calculateOnePathPoints int board grid) interactions grid
+
+
+--If not reflect or hit at first cell than it cant be so we decrease it and if possible the two tiles next to it by -50
+takePointsIfNotSides ray board grid | (fst $ fst ray) == North && isPart grid (x-1,y) && isPart grid (x+1,y) = newBoardValue (x-1) y (newBoardValue x y (newBoardValue (x+1) y board (-50) ) (-50)) (-50)
+                                    | (fst $ fst ray) == North && isPart grid (x-1,y) = newBoardValue (x-1) y (newBoardValue x y board (-50)) (-50)
+                                    | (fst $ fst ray) == North && isPart grid (x+1,y) = newBoardValue (x+1) y (newBoardValue x y board (-50)) (-50)
+                                    | (fst $ fst ray) == North = newBoardValue x y board (-50)
+
+                                    | (fst $ fst ray) == South && isPart grid (x-1,y) && isPart grid (x+1,y) = newBoardValue (x-1) y (newBoardValue x y (newBoardValue (x+1) y board (-50) ) (-50)) (-50)
+                                    | (fst $ fst ray) == South && isPart grid (x-1,y) = newBoardValue (x-1) y (newBoardValue x y board (-50)) (-50)
+                                    | (fst $ fst ray) == South && isPart grid (x+1,y) = newBoardValue (x+1) y (newBoardValue x y board (-50)) (-50)
+                                    | (fst $ fst ray) == South = newBoardValue x y board (-50)
+
+                                    | (fst $ fst ray) == West && isPart grid (x,y-1) && isPart grid (x,y+1) = newBoardValue x (y-1) (newBoardValue x (y+1) (newBoardValue x y board (-50) ) (-50)) (-50)
+                                    | (fst $ fst ray) == West && isPart grid (x,y-1) = newBoardValue x (y-1) (newBoardValue x y board (-50)) (-50)
+                                    | (fst $ fst ray) == West && isPart grid (x,y+1) = newBoardValue x (y+1) (newBoardValue x y board (-50)) (-50)
+                                    | (fst $ fst ray) == West = newBoardValue x y board (-50)
+
+                                    | (fst $ fst ray) == East && isPart grid (x,y-1) && isPart grid (x,y+1) = newBoardValue x (y-1) (newBoardValue x (y+1) (newBoardValue x y board (-50) ) (-50)) (-50)
+                                    | (fst $ fst ray) == East && isPart grid (x,y-1) = newBoardValue x (y-1) (newBoardValue x y board (-50)) (-50)
+                                    | (fst $ fst ray) == East && isPart grid (x,y+1) = newBoardValue x (y+1) (newBoardValue x y board (-50)) (-50)
+                                    | (fst $ fst ray) == East = newBoardValue x y board (-50)
+                                    
+                                    
+                  where (x,y) = sideToNumber grid (fst ray)
+                        
+
+--Get the final board after we take the values for the first column where there is no reflection or hit
+--interactions = degreePathOnes $ getPaths interactions
+finalMinusForSides (int:interactions) board grid | null interactions = takePointsIfNotSides int board grid
+                                                 | otherwise = finalMinusForSides interactions (takePointsIfNotSides int board grid) grid
+
+
+--Solve the black box
+solveBB :: Int -> Interactions -> Atoms
+solveBB atoms interactions =  head [x | x <- getNAtoms atoms interactions, calcBBInteractions (getGrid interactions) x == interactions]
+
+
+
+
+-- Challenge 3
+-- Pretty Printing Lambda with Scott Numerals
+
+data LamExpr =  LamApp LamExpr LamExpr  |  LamAbs Int LamExpr  |  LamVar Int 
+                deriving (Eq, Show, Read)
+
+
+--Print the lambda expression in the form of like x1 -> \\x2 -> x1
+
+printLambda :: LamExpr -> [Char]
+printLambda (LamVar x) = concat ["x", show x]
+--what LamApp can be
+printLambda (LamApp (LamVar a) (LamVar b)) = concat ["x", show a, " x", show b]
+printLambda (LamApp (LamApp a b ) (LamVar c)) = concat [printLambda (LamApp a b), " ",printLambda (LamVar c)]
+printLambda (LamApp (LamApp a b) c) = concat ["(",printLambda (LamApp a b), ") ",printLambda c]
+printLambda (LamApp (LamAbs x a) b) = concat ["(\\x", show x, " -> ", printLambda a, ") ", printLambda b]
+printLambda (LamApp a (LamApp b c)) = concat [printLambda a, " (" ,printLambda (LamApp b c), ")"]
+printLambda (LamApp a b) = concat [printLambda a, " ", printLambda b]
+--what LamAbs can be
+printLambda (LamAbs x a) = concat ["\\x", show x, " -> ", printLambda a]
+
+
+--Do the scott encoding to get the natural numbers wherever we can
+scottEncoding :: [Char] -> [Char]
+scottEncoding s = showIt $ changeZerosToNumbers (length a) a
+          where a = turnEverythingToZero (length $ removeParantheses $ split ' ' s) (removeParantheses $ split ' ' s)
+
+
+--Split a list by a certain value
+--a = splitOn "a" "alma"
+split :: Eq a => a -> [a] -> [[a]]
+split d [] = []
+split d s =  x : split d (drop 1 y)
+    where (x,y) = span (/= d) s
+
+
+--Check if a string has \\
+checkIfHasSlashes :: [Char] -> Bool
+checkIfHasSlashes xs = not $ null [x | x <- xs, x == '\\']
+
+
+--Turn every \\x -> \\x -> x to zero so we know its a natural number
+-- n equal length of split ' ' c''  and xs is split ' ' c''
+turnEverythingToZero :: Int -> [String] -> [[Char]]
+turnEverythingToZero n xs | (n - 5 < 0) = xs
+                          | (n-5 >= 0) && (not $ checkIfHasSlashes $ xs !! (n-1)) && (xs !! (n-2) == "->") && (checkIfHasSlashes $ xs !! (n-3)) 
+                        && (xs !! (n-4) == "->") && (checkIfHasSlashes $ xs !! (n-5)) = turnEverythingToZero (length $ changeToZero n xs) (changeToZero n xs)
+                          | otherwise = turnEverythingToZero (n-1) xs
+
+
+-- Change it to zero
+changeToZero :: Int -> [String] -> [String]
+changeToZero n xs = concat [fst splitIt, ["0"], drop 5 $ snd splitIt]
+      where splitIt = splitAt (n - 5) xs
+
+
+-- Turn zeros to number for example 0 0 will be 1 
+-- n is the length of xs, xs is the changed one with the 0s
+changeZerosToNumbers :: Int -> [String] -> [[Char]]
+changeZerosToNumbers n xs | (length xs < 2) || n < 2 = xs
+                          | (isNumber $ xs !! (n-1)) && (isNumber $ xs !! (n-2)) = changeZerosToNumbers (length newString) newString
+                          | otherwise = changeZerosToNumbers (n-1) xs
+          where number = show (read (xs !! (n-1)) + 1)
+                string1 = deleteN (n-1) xs
+                string2 = deleteN (n-1) string1
+                newString = placeN (n-1) number string2
+                isNumber (x:xs) | null xs = isDigit x
+                                | isDigit x = isNumber xs
+                                | otherwise = False
+
+
+--Add values and a space after it
+showIt :: [[Char]] -> [Char]
+showIt (x:xs) | length xs == 0 = x
+              | otherwise = concat [x, " ", showIt xs]
+
+
+--Removes the parantheses from an individual strin for example "(x1" will be ["(", "x1"]
+removeParantheses :: [[Char]] -> [[Char]]
+removeParantheses (x:xs) | length xs == 0 && x !! 0 == '(' = "(" : [tail x]
+                         | length xs == 0 && x !! (length x - 1) == ')' = deleteN (length x - 1) x : [")"]
+                         | length xs == 0 = [x]
+                         | x !! 0 == '(' = "(" : tail x : removeParantheses xs
+                         | x !! (length x - 1) == ')' = deleteLast x : ")" : removeParantheses xs
+                         | otherwise = x : removeParantheses xs
+
+
+--Delete the last element
+deleteLast (x:xs) | length xs == 0 = []
+                  | otherwise = x : deleteLast xs
+
+--Delete the nth element
+deleteN n (x:xs) | n-1 == 0 = xs
+                 | otherwise = x : deleteN (n-1) xs
+
+
+--Place a value to the nth element
+placeN n x [] = [x]
+placeN 0 x ys = x : ys
+placeN n x (y:ys) | n > length ys  = y : ys ++ [x]
+                  | n-1 == 0 = x : y : ys
+                  | otherwise = y : placeN (n-1) x ys
+
+
+--Adding it all together
+addItTogether (x:xs) | length xs == 0 = x
+                     | otherwise = x ++ addItTogether xs
+
+
+--Split a string by ( or )
+afterSplittingIt xs = filter (not .null) (split 'a' $ splitByParantheses xs)
+              where splitByParantheses (x:xs) | null xs && (x == '(' || x == ')') = 'a' : x : 'a' : []
+                                              | null xs = [x]
+                                              | x == '(' || x == ')' =  'a' : x : 'a' : splitByParantheses xs
+                                              | otherwise = x : splitByParantheses xs
+
+
+--Check if we need parantheses or not for the final values (for example "( 1 ) 1" the parantheses are redundant)
+checkIfParanthesesNeeded (x:xs) | null xs = [x]
+                                | (length xs > 2) && (x == "(") && (xs !! 1 == ")") && ((length (head xs) - countSpaces 0 (head xs)) < 4) = (head xs) : checkIfParanthesesNeeded (drop 2 xs)
+                                | otherwise =  x : checkIfParanthesesNeeded xs
+                    where countSpaces n (x:xs) | null xs && x == ' ' = n+1
+                                               | null xs = n
+                                               | x == ' ' = countSpaces (n+1) xs
+                                               | otherwise = countSpaces n xs
+
+
+--Pretty print the LamExpr with scott numerals
+prettyPrint :: LamExpr -> String
+prettyPrint xs = removeParanthesesNotNeeded $  scottEncoding $ printLambda xs
+              where removeParanthesesNotNeeded xs = oneList $ checkIfParanthesesNeeded $ afterSplittingIt xs
+
+
+-- Challenge 4 
+-- Parsing Let Expressions
+
+data LetExpr =  LetApp LetExpr LetExpr | LetDef [([Int], LetExpr)] LetExpr | 
+                LetFun Int | LetVar Int | LetNum Int
+                deriving (Show, Eq) 
+
+parseLet :: String -> Maybe LetExpr
+parseLet _  = Just (LetNum 0)
+
+
+-- Challenge 5
+-- Encode lambda terms as combinators 
+
+data CLExpr = S | K  | I | CLVar Int | CLApp CLExpr CLExpr 
+              deriving (Show,Read,Eq) 
+
+clTransform :: LamExpr -> CLExpr
+clTransform _ =  CLVar 0
+
+-- Challenge 6
+-- Compare Innermost and Outermost Reduction for Lambda and Combinators 
+
+outerRedn1 :: LamExpr -> Maybe LamExpr
+outerRedn1 _ = Just (LamVar 0)
+
+innerRedn1 :: LamExpr -> Maybe LamExpr
+innerRedn1 _ = Just (LamVar 0)
+
+outerCLRedn1 :: CLExpr -> Maybe CLExpr
+outerCLRedn1 _ = Just (CLVar 0)
+
+innerCLRedn1 :: CLExpr -> Maybe CLExpr
+innerCLRedn1 _ = Just (CLVar 0)
+
+compareInnerOuter :: LamExpr -> Int -> (Maybe Int,Maybe Int,Maybe Int,Maybe Int)
+compareInnerOuter _ _ = (Just 0, Just 0, Just 0, Just 0) 
+
