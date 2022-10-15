@@ -1,0 +1,95 @@
+module Tests where
+import Challenges
+import Test.QuickCheck
+import Data.List
+import Test.QuickCheck (quickCheck)
+
+main :: IO ()
+main = do 
+    quickCheck test1
+    quickCheck test2
+    quickCheck test3
+    quickCheck test4
+    quickCheck test5
+    quickCheck test6
+    quickCheck test7
+    quickCheck test8
+    quickCheck test9
+    quickCheck test10
+    quickCheck test11
+
+    quickCheck solvetest1
+    quickCheck solvetest2
+    quickCheck solvetest3
+    quickCheck solvetest4
+    quickCheck solvetest5
+    quickCheck solvetest6
+    quickCheck solvetest7
+    quickCheck solvetest8
+    quickCheck solvetest9
+    quickCheck solvetest10
+
+    quickCheck lambdatest1
+    quickCheck lambdatest2
+    quickCheck lambdatest3
+    quickCheck lambdatest4
+    quickCheck lambdatest5
+    quickCheck lambdatest6
+    quickCheck lambdatest7
+    quickCheck lambdatest8
+    quickCheck lambdatest9
+    quickCheck lambdatest10
+
+
+--tests for Challenge 1
+
+test1 = calcBBInteractions 3 [(2,2)] == [((North,1),Path (West,1)),((North,2),Absorb),((North,3),Path (East,1)),((East,1),Path (North,3)),((East,2),Absorb),((East,3),Path (South,3)),((South,1),Path (West,3)),((South,2),Absorb),((South,3),Path (East,3)),((West,1),Path (North,1)),((West,2),Absorb),((West,3),Path (South,1))]
+test2 = calcBBInteractions 8 [(2,3),(7,3),(4,6),(7,8)] == [((North,1),Path (West,2)),((North,2),Absorb), ((North, 3), Path (North, 6)),((North,4),Absorb),((North,5),Path (East,5)),((North,6),Path (North,3)),((North,7),Absorb),((North,8),Path (East,2)), ((East,1),Path (West,1)),((East,2),Path (North,8)),((East,3),Absorb),((East,4),Path (East,7)),((East,5),Path (North,5)),((East,6),Absorb),((East,7),Path (East,4)),((East,8),Absorb),((South,1),Path (West,4)),((South,2),Absorb),((South,3),Path (West,7)),((South,4),Absorb),((South,5),Path (West,5)),((South,6),Reflect),((South,7),Absorb),((South,8),Reflect),((West,1),Path (East,1)),((West,2),Path (North,1)),((West,3),Absorb),((West,4),Path (South,1)),((West,5),Path (South,5)),((West,6),Absorb),((West,7),Path (South,3)),((West,8),Absorb)]
+test3 = calcBBInteractions 8 [(2,3),(7,3),(4,6),(7,8)] /= [((North,1),Path (West,3)),((North,2),Absorb), ((North, 3), Path (North, 6)),((North,4),Absorb),((North,5),Path (East,5)),((North,6),Path (North,3)),((North,7),Absorb),((North,8),Path (East,2)), ((East,1),Path (West,1)),((East,2),Path (North,8)),((East,3),Absorb),((East,4),Path (East,7)),((East,5),Path (North,5)),((East,6),Absorb),((East,7),Path (East,4)),((East,8),Absorb),((South,1),Path (West,4)),((South,2),Absorb),((South,3),Path (West,7)),((South,4),Absorb),((South,5),Path (West,5)),((South,6),Reflect),((South,7),Absorb),((South,8),Reflect),((West,1),Path (East,1)),((West,2),Path (North,1)),((West,3),Absorb),((West,4),Path (South,1)),((West,5),Path (South,5)),((West,6),Absorb),((West,7),Path (South,3)),((West,8),Absorb)]
+test4 = calcBBInteractions 6 [(1,1),(1,2),(1,3)] == [((North,1),Absorb),((North,2),Reflect),((North,3),Path (South,3)),((North,4),Path (South,4)),((North,5),Path (South,5)),((North,6),Path (South,6)),((East,1),Absorb),((East,2),Absorb),((East,3),Absorb),((East,4),Path (South,2)),((East,5),Path (West,5)),((East,6),Path (West,6)),((South,1),Absorb),((South,2),Path (East,4)),((South,3),Path (North,3)),((South,4),Path (North,4)),((South,5),Path (North,5)),((South,6),Path (North,6)),((West,1),Reflect),((West,2),Reflect),((West,3),Reflect),((West,4),Reflect),((West,5),Path (East,5)),((West,6),Path (East,6))]
+test5 = calcBBInteractions 10 [(1,1),(2,2),(3,3),(4,4),(5,5),(6,6)] == [((North,1),Path (West,1)),((North,2),Reflect),((North,3),Path (East,1)),((North,4),Path (East,2)),((North,5),Path (East,3)),((North,6),Path (East,4)),((North,7),Path (East,5)),((North,8),Path (South,8)),((North,9),Path (South,9)),((North,10),Path (South,10)),((East,1),Path (North,3)),((East,2),Path (North,4)),((East,3),Path (North,5)),((East,4),Path (North,6)),((East,5),Path (North,7)),((East,6),Absorb),((East,7),Path (South,7)),((East,8),Path (West,8)),((East,9),Path (West,9)),((East,10),Path (West,10)),((South,1),Path (West,3)),((South,2),Path (West,4)),((South,3),Path (West,5)),((South,4),Path (West,6)),((South,5),Path (West,7)),((South,6),Absorb),((South,7),Path (East,7)),((South,8),Path (North,8)),((South,9),Path (North,9)),((South,10),Path (North,10)),((West,1),Path (North,1)),((West,2),Reflect),((West,3),Path (South,1)),((West,4),Path (South,2)),((West,5),Path (South,3)),((West,6),Path (South,4)),((West,7),Path (South,5)),((West,8),Path (East,8)),((West,9),Path (East,9)),((West,10),Path (East,10))]
+test6 = calcBBInteractions 2 [(1,1)] == [((North,1),Absorb),((North,2),Reflect),((East,1),Absorb),((East,2),Path (South,2)),((South,1),Absorb),((South,2),Path (East,2)),((West,1),Absorb),((West,2),Reflect)]
+test7 = calcBBInteractions 4 [(1,3),(3,3),(2,4)] == [((North,1),Absorb),((North,2),Reflect),((North,3),Absorb),((North,4),Path (East,2)),((East,1),Path (West,1)),((East,2),Path (North,4)),((East,3),Absorb),((East,4),Path (South,4)),((South,1),Reflect),((South,2),Reflect),((South,3),Reflect),((South,4),Path (East,4)),((West,1),Path (East,1)),((West,2),Reflect),((West,3),Absorb),((West,4),Reflect)]
+test8 = calcBBInteractions 5 [(1,5),(4,4),(3,4),(2,4),(5,5),(1,1)] == [((North,1),Absorb),((North,2),Reflect),((North,3),Absorb),((North,4),Absorb),((North,5),Path (East,3)),((East,1),Absorb),((East,2),Absorb),((East,3),Path (North,5)),((East,4),Reflect),((East,5),Path (South,5)),((South,1),Path (West,5)),((South,2),Reflect),((South,3),Absorb),((South,4),Reflect),((South,5),Path (East,5)),((West,1),Absorb),((West,2),Reflect),((West,3),Absorb),((West,4),Reflect),((West,5),Path (South,1))]
+test9 = calcBBInteractions 7 [(1,1),(5,6),(7,7)] == [((North,1),Absorb),((North,2),Reflect),((North,3),Path (South,3)),((North,4),Path (West,5)),((North,5),Absorb),((North,6),Path (East,5)),((North,7),Absorb),((East,1),Absorb),((East,2),Path (South,2)),((East,3),Path (West,3)),((East,4),Path (West,4)),((East,5),Path (North,6)),((East,6),Reflect),((East,7),Absorb),((South,1),Absorb),((South,2),Path (East,2)),((South,3),Path (North,3)),((South,4),Path (West,7)),((South,5),Absorb),((South,6),Reflect),((South,7),Absorb),((West,1),Absorb),((West,2),Reflect),((West,3),Path (East,3)),((West,4),Path (East,4)),((West,5),Path (North,4)),((West,6),Absorb),((West,7),Path (South,4))]
+test10 = calcBBInteractions 9 [(1,6),(2,4),(5,5),(8,3)] == [((North,1),Path (West,3)),((North,2),Absorb),((North,3),Absorb),((North,4),Absorb),((North,5),Absorb),((North,6),Path (South,7)),((North,7),Path (West,2)),((North,8),Absorb),((North,9),Path (East,2)),((East,1),Path (West,1)),((East,2),Path (North,9)),((East,3),Absorb),((East,4),Path (South,9)),((East,5),Absorb),((East,6),Path (South,6)),((East,7),Path (South,2)),((East,8),Path (West,8)),((East,9),Path (West,9)),((South,1),Absorb),((South,2),Path (East,7)),((South,3),Absorb),((South,4),Absorb),((South,5),Absorb),((South,6),Path (East,6)),((South,7),Path (North,6)),((South,8),Absorb),((South,9),Path (East,4)),((West,1),Path (East,1)),((West,2),Path (North,7)),((West,3),Path (North,1)),((West,4),Absorb),((West,5),Reflect),((West,6),Absorb),((West,7),Reflect),((West,8),Path (East,8)),((West,9),Path (East,9))]
+test11 = calcBBInteractions 1 [(1,1)] == [((North,1),Absorb),((East,1),Absorb),((South,1),Absorb),((West,1),Absorb)]
+test12 = calcBBInteractions 2 [] == [((North,1),Path (South,1)),((North,2),Path (South,2)),((East,1),Path (West,1)),((East,2),Path (West,2)),((South,1),Path (North,1)),((South,2),Path (North,2)),((West,1),Path (East,1)),((West,2),Path (East,2))]
+
+
+--tests for Challenge 2
+
+solvetest1 = null (solveBB 4 interactions \\ [(2,3), (7,3), (4,6), (7,8)])
+        where interactions = calcBBInteractions 8 [(2,3), (7,3), (4,6), (7,8)] 
+solvetest2 = null (solveBB 2 interactions \\ [(2,3),(4,6)])
+        where interactions = calcBBInteractions 8 [(2,3),(4,6)]
+solvetest3 = null (solveBB 3 interactions \\ [(1,2),(3,4),(5,6)])
+        where interactions = calcBBInteractions 10 [(1,2),(3,4),(5,6)] 
+solvetest4 = null (solveBB 1 interactions \\ [(1,1)])
+        where interactions = calcBBInteractions 6 [(1,1)]
+solvetest5 = null (solveBB 3 interactions \\ [(1,1),(3,3),(5,6)])
+        where interactions = calcBBInteractions 10 [(1,1),(3,3),(5,6)]  
+solvetest6 = null (solveBB 2 interactions \\ [(2,3), (2,4)])
+        where interactions = calcBBInteractions 4 [(2,3), (2,4)]
+solvetest7 = null (solveBB 3 interactions \\ [(3,4),(5,5),(5,6)])
+        where interactions = calcBBInteractions 6 [(3,4),(5,5),(5,6)]
+solvetest8 = null (solveBB 2 interactions \\ [(1,1),(2,2)])
+        where interactions = calcBBInteractions 3 [(1,1),(2,2)]
+solvetest9 = null (solveBB 4 interactions \\ [(1,4),(4,1), (1,1),(4,4)])
+        where interactions = calcBBInteractions 5 [(1,4),(4,1),(4,4),(1,1)]
+solvetest10 = null (solveBB 2 interactions \\ [(1,1),(2,2)])
+        where interactions = calcBBInteractions 2 [(1,1),(2,2)]
+
+
+--tests for Challenge 3
+
+lambdatest1 = (prettyPrint $ LamApp (LamAbs 1 (LamAbs 1 (LamApp (LamVar 1) (LamAbs 1 (LamAbs 2 (LamVar 1)))))) (LamAbs 1 (LamAbs 1 (LamApp (LamVar 1) (LamAbs 1 (LamAbs 2 (LamVar 1))))))) == " 1  1"
+lambdatest2 = (prettyPrint $ LamAbs 1 (LamAbs 1 (LamApp (LamVar 1) (LamAbs 1 (LamAbs 2 (LamApp (LamVar 1) ((LamAbs 1 (LamAbs 2 (LamVar 1)))))))))) == "2"
+lambdatest3 = (prettyPrint $ LamApp (LamApp (LamVar 1) (LamAbs 2 (LamVar 3))) (LamVar 1)) == "x1 \\x2 -> x3 x1"
+lambdatest4 = (prettyPrint $ LamApp (LamAbs 1 (LamVar 1)) (LamAbs 1 (LamVar 1))) == "( \\x1 -> x1 ) \\x1 -> x1"
+lambdatest5 = (prettyPrint $ LamAbs 1 (LamApp (LamVar 1) (LamAbs 1 (LamVar 1)))) == "\\x1 -> x1 \\x1 -> x1"
+lambdatest6 = (prettyPrint $ LamApp (LamVar 2) (LamAbs 1 (LamAbs 2 (LamVar 1)))) == "x2 0"
+lambdatest7 = (prettyPrint $ LamAbs 1 (LamAbs 1 (LamApp (LamVar 1) (LamAbs 1 (LamAbs 2(LamVar 1)))))) == "1"
+lambdatest8 = (prettyPrint $ LamAbs 1 (LamAbs 1 (LamApp (LamVar 1) (LamAbs 1 (LamAbs 2 (LamApp (LamVar 1) (LamAbs 1 (LamAbs 1 (LamVar 1))))))))) == "2"
+lambdatest9 = (prettyPrint $ LamAbs 1 (LamAbs 2 (LamVar 2))) == "0"
+lambdatest10 = (prettyPrint $ LamAbs 1 (LamVar 4)) == "\\x1 -> x4"
